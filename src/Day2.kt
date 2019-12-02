@@ -34,7 +34,6 @@ fun runProgram(noun : Int, verb : Int) :  Int {
 }
 
 fun main() {
-    val result = runProgram(1,1)
     val target = 19690720;
     for (noun in 1..99){
         for (verb in 1..99) {
