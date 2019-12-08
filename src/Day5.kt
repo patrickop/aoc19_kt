@@ -22,11 +22,25 @@ class ProgramState(val pc: Int, val program : List<Int>, val input : List<Int>, 
     fun writeOutput(value : Int) : ProgramState {
         return ProgramState(this.pc, this.program, this.input, this.output + listOf<Int>(value), this.halted)
     }
-    fun popInput() : Pair<Int, ProgramState> {
-        val newInputs = this.input.drop(1)
-        val inputValue = this.input[0]
-        return Pair(inputValue, ProgramState(this.pc, this.program, newInputs, this.output, this.halted))
+    fun popInput() : Pair<Int?, ProgramState> {
+        return if (this.input.isEmpty()) {
+            Pair(null, this)
+        } else {
+            val newInputs = this.input.drop(1)
+            val inputValue = this.input[0]
+            Pair(inputValue, ProgramState(this.pc, this.program, newInputs, this.output, this.halted))
+
+        }
     }
+
+    fun clearOutput() : ProgramState {
+        return ProgramState(this.pc, this.program, this.input , listOf<Int>(), this.halted)
+    }
+
+    fun feedInput(value : Int) : ProgramState {
+        return ProgramState(this.pc, this.program, this.input + listOf<Int>(value), this.output, this.halted)
+    }
+
     fun halt() : ProgramState {
         return ProgramState(this.pc, this.program, this.input, this.output , true)
     }
@@ -40,113 +54,115 @@ class ProgramState(val pc: Int, val program : List<Int>, val input : List<Int>, 
 }
 
 abstract class Instruction (val param1Mode: ParameterMode, val param2Mode: ParameterMode, val param3Mode: ParameterMode) {
-    abstract fun getAutomaticPCIncrement() : Int
     abstract fun execute(state : ProgramState) : ProgramState
     fun readParam1(state: ProgramState) : Int {
-        val ret = state.getValue(param1Mode, state.pc+1)
-       return ret
+        return state.getValue(param1Mode, state.pc+1)
     }
     fun readParam2(state: ProgramState) : Int {
-        val ret = state.getValue(param2Mode, state.pc+2)
-        return ret
+        return state.getValue(param2Mode, state.pc+2)
     }
     fun readParam3Immediate(state: ProgramState) : Int {
-        val ret = state.getValue(ParameterMode.IMMEDIATE, state.pc+3)
-        return ret
+        return state.getValue(ParameterMode.IMMEDIATE, state.pc+3)
     }
     fun readParam1Immediate(state: ProgramState) : Int {
-        val ret = state.getValue(ParameterMode.IMMEDIATE, state.pc+1)
-        return ret
+        return state.getValue(ParameterMode.IMMEDIATE, state.pc+1)
     }
 }
 
 class Add(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int = 4
 
     override fun execute(state: ProgramState): ProgramState {
-        return state.updateProgram(readParam3Immediate(state),readParam1(state)+readParam2(state))
+        return state
+                .updateProgram(readParam3Immediate(state),readParam1(state)+readParam2(state))
+                .increaseProgramCounter(4)
     }
 }
 class Multiply(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int = 4
 
     override fun execute(state: ProgramState): ProgramState {
-        return state.updateProgram(readParam3Immediate(state),readParam1(state)*readParam2(state))
+        return state
+                .updateProgram(readParam3Immediate(state),readParam1(state)*readParam2(state))
+                .increaseProgramCounter(4)
     }
 }
 class Read(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int = 2
 
     override fun execute(state: ProgramState): ProgramState {
         val (input, intermediateState) = state.popInput()
-        return intermediateState.updateProgram(readParam1Immediate(state), input)
+        return input?.let {
+            intermediateState
+                ?.increaseProgramCounter(2)
+                ?.updateProgram(readParam1Immediate(state), it)
+        } ?: state
     }
 }
 class Write(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int = 2
 
     override fun execute(state: ProgramState): ProgramState {
-        return state.writeOutput(readParam1(state))
+        return state
+                .writeOutput(readParam1(state))
+                .increaseProgramCounter(2)
     }
 }
 class Halt(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int = 1
 
     override fun execute(state: ProgramState): ProgramState {
-        return state.halt()
+        return state
+                .halt()
+                .increaseProgramCounter(1)
     }
 }
 class JumpIfTrue(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int =  if (jumped) 0 else 3;
 
     override fun execute(state: ProgramState): ProgramState {
         return if (readParam1(state) != 0){
-            jumped = true
             state.setProgramCounter(readParam2(state))
         } else {
-            state;
+            state.increaseProgramCounter(3)
         }
     }
-    var jumped : Boolean = false
 
 }
 
 class JumpIfFalse(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int =  if (jumped) 0 else 3;
 
     override fun execute(state: ProgramState): ProgramState {
         return if (readParam1(state) == 0){
-            jumped = true
             state.setProgramCounter(readParam2(state))
         } else {
-            state;
+            state.increaseProgramCounter(3)
         }
     }
-    var jumped : Boolean = false
 
 }
 
 class LessThan(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int =  4
 
     override fun execute(state: ProgramState): ProgramState {
         return if (readParam1(state) < readParam2(state)){
-            state.updateProgram(readParam3Immediate(state), 1)
+            state
+                    .updateProgram(readParam3Immediate(state), 1)
+                    .increaseProgramCounter(4)
         } else {
-            state.updateProgram(readParam3Immediate(state), 0)
+            state
+                    .updateProgram(readParam3Immediate(state), 0)
+                    .increaseProgramCounter(4)
         }
     }
 
 }
 
 class Equals(param1Mode: ParameterMode, param2Mode: ParameterMode, param3Mode: ParameterMode) : Instruction(param1Mode, param2Mode, param3Mode) {
-    override fun getAutomaticPCIncrement(): Int =  4
 
     override fun execute(state: ProgramState): ProgramState {
         return if (readParam1(state) == readParam2(state)){
-            state.updateProgram(readParam3Immediate(state), 1)
+            state
+                    .updateProgram(readParam3Immediate(state), 1)
+                    .increaseProgramCounter(4)
         } else {
-            state.updateProgram(readParam3Immediate(state), 0)
+            state
+                    .updateProgram(readParam3Immediate(state), 0)
+                    .increaseProgramCounter(4)
         }
     }
 
@@ -173,15 +189,16 @@ fun parseInstruction ( state: ProgramState) : Instruction {
     }
 }
 
-
-fun execute(state : ProgramState): ProgramState {
+fun tick(state : ProgramState): ProgramState {
     val instruction = parseInstruction(state)
-    val executedState = instruction.execute(state)
-    val newState = executedState.increaseProgramCounter(instruction.getAutomaticPCIncrement())
-    return if (newState.halted) {
-        newState
+    return instruction.execute(state)
+}
+fun execute(state : ProgramState): ProgramState {
+    val executedState = tick(state)
+    return if (executedState.halted) {
+        executedState
     } else {
-        execute(newState)
+        execute(executedState)
     }
 }
 fun readProgram(file :String) : List<Int> =
